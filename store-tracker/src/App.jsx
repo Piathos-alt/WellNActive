@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { supabase } from "./supabaseClient"
+import "./App.css"
 
 function App() {
   const [stores, setStores] = useState([])
@@ -10,15 +11,15 @@ function App() {
 
   async function fetchStores() {
     const { data } = await supabase.from("stores").select("*")
-    setStores(data)
+    setStores(data || [])
   }
 
   return (
-    <div style={{ padding: 20 }}>
-      <h1>Store Dashboard</h1>
+    <div className="container">
+      <h1 className="title">Store Dashboard</h1>
 
-      {stores.map(store => (
-        <div key={store.id}>
+      {stores.map((store) => (
+        <div key={store.id} className="card">
           {store.store_code} - {store.branch_name}
         </div>
       ))}
