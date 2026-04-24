@@ -4,19 +4,38 @@ import "./App.css"
 
 function App() {
   const [stores, setStores] = useState([])
+  const [branches, setBranches] = useState([])
+  const [selectedBranchCode, setSelectedBranchCode] = useState("")
+  const [branchName, setBranchName] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [branchLoading, setBranchLoading] = useState(true)
+  const [branchError, setBranchError] = useState("")
   const [lastUpdated, setLastUpdated] = useState(null)
 
   useEffect(() => {
     fetchStores()
+    fetchBranches()
   }, [])
+
+  useEffect(() => {
+    if (!selectedBranchCode) {
+      setBranchName("")
+      return
+    }
+
+    const selectedBranch = branches.find((branch) => branch.code === selectedBranchCode)
+    setBranchName(selectedBranch?.name || "")
+  }, [branches, selectedBranchCode])
 
   async function fetchStores() {
     setLoading(true)
     setError("")
 
-    const { data, error: fetchError } = await supabase.from("stores").select("*").order("id", { ascending: false })
+    const { data, error: fetchError } = await supabase
+      .from("branch_masterlist")
+      .select("code, branch_name")
+      .order("code", { ascending: true })
 
     if (fetchError) {
       setError(fetchError.message)
@@ -29,24 +48,59 @@ function App() {
     setLoading(false)
   }
 
+  async function fetchBranches() {
+    setBranchLoading(true)
+    setBranchError("")
+
+    const { data, error: fetchError } = await supabase
+      .from("branch_masterlist")
+      .select("code, branch_name")
+
+    if (fetchError) {
+      setBranchError(fetchError.message)
+      setBranches([])
+      setSelectedBranchCode("")
+      setBranchName("")
+      setBranchLoading(false)
+      return
+    }
+
+    const mapped = (data || [])
+      .map((row) => {
+        const code = String(row.code ?? "").trim()
+        const name = String(row.branch_name ?? "").trim()
+        return { code, name }
+      })
+      .filter((branch) => Boolean(branch.code))
+      .sort((a, b) => a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: "base" }))
+
+    setBranches(mapped)
+    setBranchLoading(false)
+  }
+
+  function handleBranchCodeChange(event) {
+    const code = event.target.value
+    setSelectedBranchCode(code)
+
+    const selectedBranch = branches.find((branch) => branch.code === code)
+    setBranchName(selectedBranch?.name || "")
+  }
+
   const metrics = useMemo(() => {
-    const totalStores = stores.length
-    const activeStores = stores.filter((store) => {
-      const status = String(store.status || store.state || "").toLowerCase()
-      return ["active", "open", "live"].includes(status)
-    }).length
-    const uniqueBranches = new Set(
-      stores.map((store) => String(store.branch_name || store.branch || "").trim()).filter(Boolean),
+    const totalBranches = stores.length
+    const branchesWithCode = stores.filter((branch) => String(branch.code || "").trim()).length
+    const uniqueBranchNames = new Set(
+      stores.map((branch) => String(branch.branch_name || "").trim()).filter(Boolean),
     ).size
 
     return [
-      { label: "Total stores", value: totalStores, detail: "Pulled from Supabase" },
-      { label: "Active stores", value: activeStores, detail: "Based on status fields" },
-      { label: "Branches tracked", value: uniqueBranches, detail: "Unique branch names" },
+      { label: "Total branches", value: totalBranches, detail: "Rows from branch_masterlist" },
+      { label: "With branch code", value: branchesWithCode, detail: "Rows with a valid code" },
+      { label: "Unique names", value: uniqueBranchNames, detail: "Distinct branch_name values" },
     ]
   }, [stores])
 
-  const recentStores = stores.slice(0, 6)
+  const recentBranches = stores.slice(0, 6)
 
   return (
     <main className="dashboard-shell">
@@ -83,8 +137,8 @@ function App() {
         <article className="surface">
           <div className="section-heading">
             <div>
-              <p className="section-kicker">Recent stores</p>
-              <h2>Tracked locations</h2>
+              <p className="section-kicker">Branch masterlist</p>
+              <h2>Tracked branches</h2>
             </div>
             <button type="button" className="refresh-button" onClick={fetchStores}>
               Refresh
@@ -92,42 +146,96 @@ function App() {
           </div>
 
           {loading ? (
-            <div className="state-box">Loading store data...</div>
+            <div className="state-box">Loading branch data...</div>
           ) : error ? (
             <div className="state-box error-state">
               <strong>Could not load live data.</strong>
               <span>{error}</span>
             </div>
-          ) : recentStores.length ? (
+          ) : recentBranches.length ? (
             <div className="store-list">
-              {recentStores.map((store) => (
-                <div key={store.id ?? `${store.store_code}-${store.branch_name}`} className="store-row">
+              {recentBranches.map((branch) => (
+                <div key={branch.code ?? branch.branch_name} className="store-row">
                   <div>
-                    <strong>{store.branch_name || "Unnamed branch"}</strong>
-                    <span>{store.store_code || store.code || "No store code"}</span>
+                    <strong>{branch.branch_name || "Unnamed branch"}</strong>
+                    <span>{branch.code || "No branch code"}</span>
                   </div>
                   <div className="store-meta">
-                    <span>{store.status || store.state || "Unknown status"}</span>
-                    <span>{store.region || store.city || "No region"}</span>
+                    <span>Source: branch_masterlist</span>
+                    <span>{branch.code ? "Code available" : "Missing code"}</span>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
             <div className="state-box">
-              No store records yet. Add rows to the <code>stores</code> table and they will appear here.
+              No branch records yet. Add rows to the <code>branch_masterlist</code> table and they will appear here.
+              <p className="debug-hint">
+                Debug tip: If you uploaded rows already, this usually means RLS is blocking anon select
+                access or this app is pointed to a different Supabase project URL/key.
+              </p>
             </div>
           )}
         </article>
 
         <article className="surface accent-surface">
-          <p className="section-kicker">Overview</p>
-          <h2>Dashboard snapshot</h2>
-          <ul className="bullet-list">
-            <li>Reads directly from Supabase when deployed.</li>
-            <li>Shows a clear empty state instead of a blank screen.</li>
-            <li>Uses a responsive layout that works on desktop and mobile.</li>
-          </ul>
+          <div className="section-heading compact-heading">
+            <div>
+              <p className="section-kicker">Branch picker test</p>
+              <h2>Branch masterlist form</h2>
+            </div>
+            <button type="button" className="refresh-button" onClick={fetchBranches}>
+              Reload branches
+            </button>
+          </div>
+
+          <form className="branch-form" onSubmit={(event) => event.preventDefault()}>
+            <label htmlFor="branchCode">Branch code</label>
+            <select
+              id="branchCode"
+              value={selectedBranchCode}
+              onChange={handleBranchCodeChange}
+              disabled={branchLoading || Boolean(branchError)}
+            >
+              <option value="">Select a branch code</option>
+              {branches.map((branch) => (
+                <option key={branch.code} value={branch.code}>
+                  {branch.code}
+                </option>
+              ))}
+            </select>
+
+            <label htmlFor="branchName">Branch name</label>
+            <input
+              id="branchName"
+              type="text"
+              value={branchName}
+              readOnly
+              placeholder="Branch name will auto-fill"
+            />
+          </form>
+
+          {branchLoading ? (
+            <div className="state-box branch-state">Loading branch list...</div>
+          ) : branchError ? (
+            <div className="state-box error-state branch-state">
+              <strong>Could not load branch_masterlist.</strong>
+              <span>{branchError}</span>
+            </div>
+          ) : (
+            <div>
+              <p className="branch-helper">
+                Loaded {branches.length} branch {branches.length === 1 ? "record" : "records"} from Supabase.
+              </p>
+              {branches.length === 0 ? (
+                <p className="debug-hint branch-helper">
+                  Debug tip: Query returned 0 rows. Check Supabase RLS policy for table
+                  <code> branch_masterlist </code>
+                  and verify the app is using the same project where you uploaded the data.
+                </p>
+              ) : null}
+            </div>
+          )}
         </article>
       </section>
     </main>

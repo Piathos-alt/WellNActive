@@ -116,6 +116,10 @@
   margin-bottom: 18px;
 }
 
+.compact-heading {
+  margin-bottom: 14px;
+}
+
 .refresh-button {
   border: 0;
   border-radius: 999px;
@@ -174,6 +178,61 @@
   background: linear-gradient(180deg, rgba(15, 28, 47, 0.88), rgba(8, 16, 27, 0.92));
 }
 
+.branch-form {
+  display: grid;
+  gap: 10px;
+}
+
+.branch-form label {
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #9eb7d4;
+}
+
+.branch-form select,
+.branch-form input {
+  width: 100%;
+  border: 1px solid rgba(163, 196, 230, 0.28);
+  border-radius: 14px;
+  background: rgba(7, 16, 30, 0.72);
+  color: #e8f1fb;
+  padding: 12px 14px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.branch-form select option {
+  color: #0b1524;
+  background: #ffffff;
+}
+
+.branch-form select:focus,
+.branch-form input:focus {
+  border-color: rgba(92, 217, 255, 0.8);
+  box-shadow: 0 0 0 3px rgba(92, 217, 255, 0.2);
+}
+
+.branch-form input[readonly] {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.branch-state {
+  margin-top: 14px;
+}
+
+.branch-helper {
+  margin: 14px 0 0;
+  color: #b6cbe2;
+}
+
+.debug-hint {
+  margin: 10px 0 0;
+  font-size: 0.9rem;
+  color: #ffdca8;
+  line-height: 1.5;
+}
+
 .bullet-list {
   margin: 18px 0 0;
   padding-left: 18px;
@@ -197,6 +256,10 @@
   .section-heading {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .compact-heading .refresh-button {
+    width: 100%;
   }
 
   .store-meta {
