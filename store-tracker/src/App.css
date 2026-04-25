@@ -1,10 +1,14 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Outfit:wght@500;600;700&display=swap");
+
 .form-page {
   min-height: 100vh;
   padding: 24px 16px 28px;
   color: #e7eef8;
+  font-family: "Manrope", "Segoe UI", sans-serif;
   background:
     radial-gradient(circle at 8% 8%, rgba(83, 208, 252, 0.22), transparent 30%),
     radial-gradient(circle at 90% 16%, rgba(120, 219, 168, 0.2), transparent 34%),
+    radial-gradient(circle at 80% 90%, rgba(255, 162, 86, 0.14), transparent 40%),
     linear-gradient(180deg, #050d18 0%, #0b1628 52%, #0f1b30 100%);
 }
 
@@ -26,6 +30,7 @@
   background: rgba(6, 15, 29, 0.7);
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.3);
   backdrop-filter: blur(14px);
+  animation: cardIn 0.45s ease both;
 }
 
 .panel-heading {
@@ -190,6 +195,11 @@
   background: #071425;
   box-shadow: 0 24px 50px rgba(0, 0, 0, 0.4);
   padding: 14px;
+  animation: modalIn 0.2s ease both;
+}
+
+.add-store-modal-card {
+  width: min(94vw, 760px);
 }
 
 .modal-header {
@@ -307,6 +317,7 @@
   margin: 0;
   line-height: 1.05;
   color: #f4f8fd;
+  font-family: "Outfit", "Manrope", sans-serif;
 }
 
 .form-header h1 {
@@ -349,11 +360,13 @@
 
 .field-grid.two-col {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
 }
 
 .form-field {
   display: grid;
   gap: 8px;
+  align-content: start;
 }
 
 .form-field span {
@@ -373,6 +386,37 @@
   padding: 12px 14px;
   outline: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.store-code-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.add-store-button {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(138, 212, 255, 0.55);
+  background: rgba(64, 176, 255, 0.16);
+  color: #d8f0ff;
+  font-size: 1.25rem;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.add-store-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(138, 212, 255, 0.9);
+  box-shadow: 0 8px 18px rgba(40, 160, 255, 0.28);
+}
+
+.add-store-button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(90, 214, 255, 0.25);
 }
 
 .form-field select option {
@@ -395,6 +439,42 @@
 
 .form-field input[readonly] {
   background: rgba(255, 255, 255, 0.06);
+}
+
+.store-code-field-stack {
+  display: grid;
+  gap: 0;
+}
+
+.store-code-hint-slot {
+  min-height: 1rem;
+  padding-top: 4px;
+}
+
+.store-code-input.store-code-new {
+  border-color: rgba(107, 230, 145, 0.88);
+  box-shadow: 0 0 0 2px rgba(107, 230, 145, 0.18);
+}
+
+.store-code-input.store-code-existing {
+  border-color: rgba(255, 117, 117, 0.9);
+  box-shadow: 0 0 0 2px rgba(255, 117, 117, 0.2);
+}
+
+.store-code-hint {
+  margin: 2px 0 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.store-code-hint-new {
+  color: #93f5b5;
+}
+
+.store-code-hint-existing {
+  color: #ff9f9f;
 }
 
 .sku-block,
@@ -655,6 +735,30 @@
   height: 100px;
   object-fit: cover;
   display: block;
+}
+
+@keyframes cardIn {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes modalIn {
+  from {
+    transform: scale(0.98);
+    opacity: 0;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 @media (max-width: 960px) {

@@ -5,6 +5,8 @@ import "./App.css"
 
 const SKU_ITEMS = ["Neck & Shoulder", "Menstrual", "Back", "Knee & Joint"]
 const STOCK_OPTIONS = ["With Stock", "Low Stock", "Out of Stock"]
+const DEFAULT_WEEK_OPTIONS = ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5"]
+const WEEK_HISTORY_STORAGE_KEY = "wellnactive-week-history"
 
 function createInitialSkuState() {
   return SKU_ITEMS.reduce((accumulator, sku) => {
@@ -14,6 +16,38 @@ function createInitialSkuState() {
     }
     return accumulator
   }, {})
+}
+
+function normalizeWeekOptions(values) {
+  return Array.from(
+    new Set(
+      (values || [])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+}
+
+function readWeekHistoryFromStorage() {
+  if (typeof window === "undefined") {
+    return []
+  }
+
+  try {
+    const raw = window.localStorage.getItem(WEEK_HISTORY_STORAGE_KEY)
+    if (!raw) {
+      return []
+    }
+
+    const parsed = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+
+    return normalizeWeekOptions(parsed)
+  } catch {
+    return []
+  }
 }
 
 function App() {
@@ -43,11 +77,78 @@ function App() {
   const [modalLoading, setModalLoading] = useState(false)
   const [modalError, setModalError] = useState("")
   const [isExporting, setIsExporting] = useState(false)
+  const [weekOptions, setWeekOptions] = useState(() => normalizeWeekOptions([...DEFAULT_WEEK_OPTIONS, ...readWeekHistoryFromStorage()]))
+  const [isAddingWeek, setIsAddingWeek] = useState(false)
+  const [newWeekInput, setNewWeekInput] = useState("")
+  const [isStoreModalOpen, setIsStoreModalOpen] = useState(false)
+  const [newStoreCode, setNewStoreCode] = useState("")
+  const [newBranchName, setNewBranchName] = useState("")
+  const [storeModalError, setStoreModalError] = useState("")
+  const [isSavingStore, setIsSavingStore] = useState(false)
+  const [storeCodeLookupStatus, setStoreCodeLookupStatus] = useState("idle")
+
+  function saveWeekOptions(nextOptions) {
+    const normalized = normalizeWeekOptions(nextOptions)
+    setWeekOptions(normalized)
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(WEEK_HISTORY_STORAGE_KEY, JSON.stringify(normalized))
+    }
+  }
+
+  function registerWeekLabel(value) {
+    const trimmed = String(value || "").trim()
+    if (!trimmed) {
+      return
+    }
+
+    saveWeekOptions([...weekOptions, trimmed])
+  }
+
+  function handleWeekSelectChange(event) {
+    const value = event.target.value
+
+    if (value === "__new__") {
+      setIsAddingWeek(true)
+      setNewWeekInput("")
+      setWeekLabel("")
+      return
+    }
+
+    setIsAddingWeek(false)
+    setNewWeekInput("")
+    setWeekLabel(value)
+    setFormMessage("")
+  }
+
+  function handleNewWeekCommit() {
+    const trimmed = String(newWeekInput || "").trim()
+    if (!trimmed) {
+      return
+    }
+
+    registerWeekLabel(trimmed)
+    setWeekLabel(trimmed)
+    setIsAddingWeek(false)
+    setNewWeekInput("")
+    setFormMessage("")
+  }
 
   useEffect(() => {
     fetchBranches()
     fetchSavedForms()
   }, [])
+
+  useEffect(() => {
+    const weeksFromSavedForms = savedForms
+      .map((entry) => String(entry.week_label || "").trim())
+      .filter(Boolean)
+
+    const merged = normalizeWeekOptions([...DEFAULT_WEEK_OPTIONS, ...readWeekHistoryFromStorage(), ...weeksFromSavedForms])
+    if (merged.join("||") !== weekOptions.join("||")) {
+      saveWeekOptions(merged)
+    }
+  }, [savedForms])
 
   useEffect(() => {
     if (!selectedStoreCode) {
@@ -60,6 +161,49 @@ function App() {
       setBranchName(selectedBranch.name)
     }
   }, [branches, selectedStoreCode])
+
+  useEffect(() => {
+    if (!isStoreModalOpen) {
+      return
+    }
+
+    const trimmedCode = String(newStoreCode || "").trim().toUpperCase()
+    if (!trimmedCode) {
+      setStoreCodeLookupStatus("idle")
+      return
+    }
+
+    setStoreCodeLookupStatus("checking")
+    let isCancelled = false
+
+    const timeoutId = window.setTimeout(async () => {
+      const lookupResult = await supabase
+        .from("branch_masterlist")
+        .select("code")
+        .eq("code", trimmedCode)
+        .limit(1)
+
+      if (isCancelled) {
+        return
+      }
+
+      if (lookupResult.error) {
+        setStoreCodeLookupStatus("error")
+        return
+      }
+
+      if ((lookupResult.data || []).length > 0) {
+        setStoreCodeLookupStatus("existing")
+      } else {
+        setStoreCodeLookupStatus("new")
+      }
+    }, 300)
+
+    return () => {
+      isCancelled = true
+      window.clearTimeout(timeoutId)
+    }
+  }, [isStoreModalOpen, newStoreCode])
 
   async function fetchBranches() {
     setBranchLoading(true)
@@ -133,6 +277,198 @@ function App() {
     setFormMessage("")
   }
 
+  function openStoreModal() {
+    setNewStoreCode("")
+    setNewBranchName("")
+    setStoreModalError("")
+    setStoreCodeLookupStatus("idle")
+    setIsStoreModalOpen(true)
+  }
+
+  function closeStoreModal() {
+    if (isSavingStore) {
+      return
+    }
+
+    setIsStoreModalOpen(false)
+    setNewStoreCode("")
+    setNewBranchName("")
+    setStoreModalError("")
+    setStoreCodeLookupStatus("idle")
+  }
+
+  async function handleSaveNewStore(event) {
+    event.preventDefault()
+
+    const trimmedCode = String(newStoreCode || "").trim().toUpperCase()
+    const trimmedName = String(newBranchName || "").trim()
+
+    if (!trimmedCode) {
+      setStoreModalError("Store code is required.")
+      return
+    }
+
+    if (!trimmedName) {
+      setStoreModalError("Branch name is required.")
+      return
+    }
+
+    setIsSavingStore(true)
+    setStoreModalError("")
+
+    const existingStoreResult = await supabase
+      .from("branch_masterlist")
+      .select("code, branch_name")
+      .eq("code", trimmedCode)
+      .limit(1)
+
+    if (existingStoreResult.error) {
+      setIsSavingStore(false)
+      setStoreModalError(`Could not validate existing store code: ${existingStoreResult.error.message}`)
+      return
+    }
+
+    const existingStore = (existingStoreResult.data || [])[0]
+    const existingBranchName = String(existingStore?.branch_name || "").trim()
+
+    if (existingStore && existingBranchName.toLowerCase() === trimmedName.toLowerCase()) {
+      setIsSavingStore(false)
+      setStoreModalError("This store code and branch name already exist.")
+      setFormMessage(`No changes made. ${trimmedCode} already maps to ${trimmedName}.`)
+      return
+    }
+
+    if (existingStore && existingBranchName && existingBranchName.toLowerCase() !== trimmedName.toLowerCase()) {
+      const shouldUpdate = window.confirm(
+        `${trimmedCode} already maps to ${existingBranchName}. Update it to ${trimmedName}?`,
+      )
+
+      if (!shouldUpdate) {
+        setIsSavingStore(false)
+        return
+      }
+
+      const updateResult = await supabase
+        .from("branch_masterlist")
+        .update({ branch_name: trimmedName })
+        .eq("code", trimmedCode)
+
+      if (updateResult.error) {
+        setIsSavingStore(false)
+        setStoreModalError(`Could not update existing store code: ${updateResult.error.message}`)
+        return
+      }
+
+      await fetchBranches()
+      setSelectedStoreCode(trimmedCode)
+      setBranchName(trimmedName)
+      setFormMessage(`Store code ${trimmedCode} updated successfully.`)
+      setIsSavingStore(false)
+      closeStoreModal()
+      return
+    }
+
+    const shouldSaveNewCode = window.confirm(`Save new store mapping ${trimmedCode} - ${trimmedName}?`)
+    if (!shouldSaveNewCode) {
+      setIsSavingStore(false)
+      return
+    }
+
+    const insertResult = await supabase
+      .from("branch_masterlist")
+      .insert({
+        code: trimmedCode,
+        branch_name: trimmedName,
+      })
+
+    if (insertResult.error?.code === "23505") {
+      const updateResult = await supabase
+        .from("branch_masterlist")
+        .update({ branch_name: trimmedName })
+        .eq("code", trimmedCode)
+
+      if (updateResult.error) {
+        setIsSavingStore(false)
+        setStoreModalError(`Could not update existing store code: ${updateResult.error.message}`)
+        return
+      }
+    } else if (insertResult.error) {
+      setIsSavingStore(false)
+      setStoreModalError(`Could not save store code: ${insertResult.error.message}`)
+      return
+    }
+
+    await fetchBranches()
+    setSelectedStoreCode(trimmedCode)
+    setBranchName(trimmedName)
+    setFormMessage(`Store code ${trimmedCode} saved successfully.`)
+    setIsSavingStore(false)
+    closeStoreModal()
+  }
+
+  const isExistingStoreCodeDetected = storeCodeLookupStatus === "existing"
+  const storeCodeInputClassName = `store-code-input ${
+    storeCodeLookupStatus === "new" ? "store-code-new" : storeCodeLookupStatus === "existing" ? "store-code-existing" : ""
+  }`
+
+  function handleFormKeyDown(event) {
+    if (event.key !== "Enter") {
+      return
+    }
+
+    const target = event.target
+    if (!(target instanceof HTMLElement)) {
+      return
+    }
+
+    if (target.tagName === "TEXTAREA") {
+      return
+    }
+
+    if (target.id === "visitReference") {
+      return
+    }
+
+    event.preventDefault()
+
+    const form = event.currentTarget
+    if (!(form instanceof HTMLFormElement)) {
+      return
+    }
+
+    const focusableElements = Array.from(
+      form.querySelectorAll('input, select, textarea, button:not([type="submit"])'),
+    ).filter((element) => {
+      if (!(element instanceof HTMLElement)) {
+        return false
+      }
+
+      if (element.tabIndex < 0) {
+        return false
+      }
+
+      if (element.hasAttribute("disabled")) {
+        return false
+      }
+
+      if (element.getAttribute("type") === "hidden") {
+        return false
+      }
+
+      return true
+    })
+
+    const currentIndex = focusableElements.indexOf(target)
+    if (currentIndex < 0) {
+      return
+    }
+
+    const nextField = focusableElements[currentIndex + 1]
+    if (nextField instanceof HTMLElement) {
+      nextField.focus()
+    }
+  }
+
   function handleSkuFieldChange(sku, field, value) {
     setSkuStock((currentStock) => ({
       ...currentStock,
@@ -169,6 +505,8 @@ function App() {
 
   function resetForm() {
     setWeekLabel("Week 1")
+    setIsAddingWeek(false)
+    setNewWeekInput("")
     setVisitDate(new Date().toISOString().slice(0, 10))
     setSelectedSavedFormId("")
     setSelectedStoreCode("")
@@ -263,6 +601,8 @@ function App() {
       setFormMessage("Please enter a week label (example: Week 1).")
       return
     }
+
+    registerWeekLabel(weekLabel)
 
     if (!selectedStoreCode) {
       setFormMessage("Please select a store code.")
@@ -580,27 +920,40 @@ function App() {
             </div>
           </header>
 
-          <form className="visit-form" onSubmit={handleSubmit}>
+          <form className="visit-form" onSubmit={handleSubmit} onKeyDown={handleFormKeyDown}>
             <div className="field-grid">
               <label className="form-field" htmlFor="weekLabel">
                 <span>Week Group</span>
-                <input
+                <select
                   id="weekLabel"
-                  list="weekOptions"
-                  value={weekLabel}
-                  placeholder="Type or choose (example: Week 1)"
-                  onChange={(event) => {
-                    setWeekLabel(event.target.value)
-                    setFormMessage("")
-                  }}
-                />
-                <datalist id="weekOptions">
-                  <option value="Week 1" />
-                  <option value="Week 2" />
-                  <option value="Week 3" />
-                  <option value="Week 4" />
-                  <option value="Week 5" />
-                </datalist>
+                  value={isAddingWeek ? "__new__" : weekLabel}
+                  onChange={handleWeekSelectChange}
+                >
+                  <option value="">Select week group</option>
+                  {weekOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                  <option value="__new__">+ Add new week...</option>
+                </select>
+
+                {isAddingWeek ? (
+                  <input
+                    id="newWeekInput"
+                    type="text"
+                    value={newWeekInput}
+                    placeholder="Type new week (example: Week Test)"
+                    onChange={(event) => setNewWeekInput(event.target.value)}
+                    onBlur={handleNewWeekCommit}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault()
+                        handleNewWeekCommit()
+                      }
+                    }}
+                  />
+                ) : null}
               </label>
             </div>
 
@@ -620,19 +973,30 @@ function App() {
 
               <label className="form-field" htmlFor="storeCode">
                 <span>Store Code Selector</span>
-                <select
-                  id="storeCode"
-                  value={selectedStoreCode}
-                  onChange={handleStoreCodeChange}
-                  disabled={branchLoading || Boolean(branchError)}
-                >
-                  <option value="">Select a store code</option>
-                  {branches.map((branch) => (
-                    <option key={branch.code} value={branch.code}>
-                      {branch.code}
-                    </option>
-                  ))}
-                </select>
+                <div className="store-code-row">
+                  <select
+                    id="storeCode"
+                    value={selectedStoreCode}
+                    onChange={handleStoreCodeChange}
+                    disabled={branchLoading || Boolean(branchError)}
+                  >
+                    <option value="">Select a store code</option>
+                    {branches.map((branch) => (
+                      <option key={branch.code} value={branch.code}>
+                        {branch.code}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="add-store-button"
+                    title="Add another store code?"
+                    aria-label="Add another store code"
+                    onClick={openStoreModal}
+                  >
+                    +
+                  </button>
+                </div>
               </label>
             </div>
 
@@ -936,6 +1300,83 @@ function App() {
                 ))}
               </div>
             ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {isStoreModalOpen ? (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-label="Add another store code">
+          <div className="modal-card add-store-modal-card">
+            <div className="modal-header">
+              <div>
+                <p className="form-kicker">Store Masterlist</p>
+                <h3>Add another store code</h3>
+              </div>
+            </div>
+
+            <form className="visit-form" onSubmit={handleSaveNewStore}>
+              <div className="field-grid two-col">
+                <label className="form-field" htmlFor="newStoreCode">
+                  <span>Store Code</span>
+                  <div className="store-code-field-stack">
+                    <input
+                      id="newStoreCode"
+                      type="text"
+                      value={newStoreCode}
+                      className={storeCodeInputClassName}
+                      placeholder="Example: 1234"
+                      onChange={(event) => {
+                        setNewStoreCode(event.target.value.toUpperCase())
+                        setStoreModalError("")
+                      }}
+                    />
+                    <div className="store-code-hint-slot">
+                      {storeCodeLookupStatus === "new" ? (
+                        <p className="store-code-hint store-code-hint-new">New Code</p>
+                      ) : null}
+                      {storeCodeLookupStatus === "existing" ? (
+                        <p className="store-code-hint store-code-hint-existing">Saved Store Code Detected</p>
+                      ) : null}
+                    </div>
+                  </div>
+                </label>
+
+                <label className="form-field" htmlFor="newBranchName">
+                  <span>Branch Name</span>
+                  <input
+                    id="newBranchName"
+                    type="text"
+                    value={newBranchName}
+                    placeholder="Example: Makati Glorietta"
+                    onChange={(event) => {
+                      setNewBranchName(event.target.value)
+                      setStoreModalError("")
+                    }}
+                  />
+                </label>
+              </div>
+
+              {storeModalError ? (
+                <div className="feedback-box error-feedback compact-feedback">
+                  <strong>Could not save new store.</strong>
+                  <span>{storeModalError}</span>
+                </div>
+              ) : null}
+
+              <div className="form-actions">
+                <button type="submit" className="action-button primary-action" disabled={isSavingStore}>
+                  {isSavingStore ? "Saving..." : isExistingStoreCodeDetected ? "Update Store Code" : "Save Store Code"}
+                </button>
+                <button
+                  type="button"
+                  className="action-button secondary-action"
+                  onClick={closeStoreModal}
+                  disabled={isSavingStore}
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}
