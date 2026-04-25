@@ -5,6 +5,7 @@ import "./App.css"
 
 const SKU_ITEMS = ["Neck & Shoulder", "Menstrual", "Back", "Knee & Joint"]
 const STOCK_OPTIONS = ["With Stock", "Low Stock", "Out of Stock"]
+const SKU_POG_OPTIONS = ["POG", "Non-POG"]
 const DEFAULT_WEEK_OPTIONS = ["Week 1", "Week 2", "Week 3", "Week 4", "Week 5"]
 const WEEK_HISTORY_STORAGE_KEY = "wellnactive-week-history"
 
@@ -13,6 +14,7 @@ function createInitialSkuState() {
     accumulator[sku] = {
       status: "With Stock",
       quantity: "",
+      pogStatus: "",
     }
     return accumulator
   }, {})
@@ -519,6 +521,25 @@ function App() {
     }
   }, [visitPhotos])
 
+  async function fetchVisitEntrySkus(visitEntryId) {
+    let { data, error } = await supabase
+      .from("visit_entry_skus")
+      .select("sku_name, stock_status, stock_quantity, sku_pog_status")
+      .eq("visit_entry_id", visitEntryId)
+
+    if (error?.code === "42703") {
+      const fallback = await supabase
+        .from("visit_entry_skus")
+        .select("sku_name, stock_status, stock_quantity")
+        .eq("visit_entry_id", visitEntryId)
+
+      data = fallback.data
+      error = fallback.error
+    }
+
+    return { data, error }
+  }
+
   function resetForm() {
     setWeekLabel("Week 1")
     setIsAddingWeek(false)
@@ -576,10 +597,7 @@ function App() {
   async function loadSavedForm(entry) {
     setFormMessage("Loading saved form...")
 
-    const { data, error: skuError } = await supabase
-      .from("visit_entry_skus")
-      .select("sku_name, stock_status, stock_quantity")
-      .eq("visit_entry_id", entry.id)
+    const { data, error: skuError } = await fetchVisitEntrySkus(entry.id)
 
     if (skuError) {
       setFormMessage(`Could not load SKU details: ${skuError.message}`)
@@ -595,6 +613,7 @@ function App() {
       loadedSkuState[row.sku_name] = {
         status: row.stock_status || "With Stock",
         quantity: String(row.stock_quantity ?? ""),
+        pogStatus: row.sku_pog_status || entry.pog_status || "",
       }
     }
 
@@ -651,8 +670,15 @@ function App() {
         sku_name: sku,
         stock_status: skuStock[sku].status,
         stock_quantity: Number.isNaN(parsedQuantity) || parsedQuantity < 0 ? 0 : parsedQuantity,
+        sku_pog_status: skuStock[sku].pogStatus,
       }
     })
+
+    const missingSkuPogStatus = skuRows.find((row) => !String(row.sku_pog_status || "").trim())
+    if (missingSkuPogStatus) {
+      setFormMessage(`Please choose SKU POG status for ${missingSkuPogStatus.sku_name}.`)
+      return
+    }
 
     setIsSubmitting(true)
 
@@ -792,10 +818,7 @@ function App() {
     try {
       const results = await Promise.all(
         entries.map(async (entry) => {
-          const { data, error } = await supabase
-            .from("visit_entry_skus")
-            .select("sku_name, stock_status, stock_quantity")
-            .eq("visit_entry_id", entry.id)
+          const { data, error } = await fetchVisitEntrySkus(entry.id)
 
           if (error) {
             throw new Error(`${entry.branch_name || "Unnamed branch"}: ${error.message}`)
@@ -808,6 +831,7 @@ function App() {
               sku_name: sku,
               stock_status: row?.stock_status || "-",
               stock_quantity: row?.stock_quantity ?? "-",
+              sku_pog_status: row?.sku_pog_status || entry.pog_status || "-",
             }
           })
 
@@ -1094,6 +1118,22 @@ function App() {
                         onChange={(event) => handleSkuFieldChange(sku, "quantity", event.target.value)}
                       />
                     </label>
+
+                    <label className="form-field" htmlFor={`skuPogStatus-${sku}`}>
+                      <span>SKU POG Status</span>
+                      <select
+                        id={`skuPogStatus-${sku}`}
+                        value={skuStock[sku].pogStatus}
+                        onChange={(event) => handleSkuFieldChange(sku, "pogStatus", event.target.value)}
+                      >
+                        <option value="">Select SKU POG status</option>
+                        {SKU_POG_OPTIONS.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                   </article>
                 ))}
               </div>
@@ -1268,6 +1308,7 @@ function App() {
                             <th>SKU</th>
                             <th>Stock Status</th>
                             <th>Stock Quantity</th>
+                            <th>SKU POG Status</th>
                             <th>POG Status</th>
                             <th>Visit Reference</th>
                           </tr>
@@ -1286,6 +1327,7 @@ function App() {
                               <td>{row.sku_name}</td>
                               <td>{row.stock_status}</td>
                               <td>{row.stock_quantity}</td>
+                              <td>{row.sku_pog_status}</td>
 
                               {index === 0 ? (
                                 <>

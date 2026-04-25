@@ -175,7 +175,8 @@ export async function exportWeekToExcel(expandedWeekLabel, expandedWeekEntries, 
       { header: "SKU", key: "sku_name", width: 22 },
       { header: "Stock Status", key: "stock_status", width: 16 },
       { header: "Stock Quantity", key: "stock_quantity", width: 16 },
-      { header: "POG Status", key: "pog_status", width: 14 },
+      { header: "SKU POG Status", key: "sku_pog_status", width: 16 },
+      { header: "Store POG Status", key: "pog_status", width: 16 },
       { header: "Visit Reference", key: "visit_reference_urls", width: 60 },
     ]
 
@@ -201,7 +202,7 @@ export async function exportWeekToExcel(expandedWeekLabel, expandedWeekEntries, 
     for (const { entry, rows } of expandedWeekEntries) {
       const skuRows = Array.isArray(rows) && rows.length
         ? rows
-        : [{ sku_name: "-", stock_status: "-", stock_quantity: "-" }]
+        : [{ sku_name: "-", stock_status: "-", stock_quantity: "-", sku_pog_status: "-" }]
 
       const startRow = worksheet.rowCount + 1
       const visitReferenceUrls = getReferenceUrls(entry?.visit_reference_urls)
@@ -214,6 +215,7 @@ export async function exportWeekToExcel(expandedWeekLabel, expandedWeekEntries, 
           sku_name: normalizeText(skuRow?.sku_name),
           stock_status: normalizeText(skuRow?.stock_status),
           stock_quantity: normalizeText(skuRow?.stock_quantity),
+          sku_pog_status: normalizeText(skuRow?.sku_pog_status),
           pog_status: normalizeText(entry?.pog_status),
           visit_reference_urls: "",
         })
@@ -235,7 +237,7 @@ export async function exportWeekToExcel(expandedWeekLabel, expandedWeekEntries, 
       }
 
       row.eachCell((cell, columnNumber) => {
-        if ([4, 5, 6].includes(columnNumber)) {
+        if ([4, 5, 6, 7].includes(columnNumber)) {
           cell.border = createBorder({ top: "none", bottom: "none" })
           return
         }
@@ -249,7 +251,7 @@ export async function exportWeekToExcel(expandedWeekLabel, expandedWeekEntries, 
         continue
       }
 
-      for (const columnIndex of [1, 2, 3, 7, 8]) {
+      for (const columnIndex of [1, 2, 3, 8, 9]) {
         worksheet.mergeCells(group.startRow, columnIndex, group.endRow, columnIndex)
       }
 
@@ -262,7 +264,7 @@ export async function exportWeekToExcel(expandedWeekLabel, expandedWeekEntries, 
           const isBottomRow = rowIndex === group.endRow
           const isFirstColumn = columnIndex === 1
           const isLastColumn = columnIndex === columns.length
-          const isSkuBlockColumn = [4, 5, 6].includes(columnIndex)
+          const isSkuBlockColumn = [4, 5, 6, 7].includes(columnIndex)
 
           cell.border = createBorder({
             top: isSkuBlockColumn ? "none" : (isTopRow ? "medium" : "thin"),
@@ -273,7 +275,7 @@ export async function exportWeekToExcel(expandedWeekLabel, expandedWeekEntries, 
         }
       }
 
-      const referenceCell = worksheet.getCell(group.startRow, 8)
+      const referenceCell = worksheet.getCell(group.startRow, 9)
       referenceCell.alignment = { vertical: "middle", horizontal: "center", wrapText: true }
 
       const referenceUrls = Array.isArray(group.visitReferenceUrls) ? group.visitReferenceUrls : []
@@ -310,7 +312,7 @@ export async function exportWeekToExcel(expandedWeekLabel, expandedWeekEntries, 
         referenceCell.value = null
 
         worksheet.addImage(imageId, {
-          tl: { col: 7.08, row: group.startRow - 1 + 0.08 },
+          tl: { col: 8.08, row: group.startRow - 1 + 0.08 },
           ext: {
             width: composite.width,
             height: composite.height,
