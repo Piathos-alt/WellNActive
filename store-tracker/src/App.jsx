@@ -1054,7 +1054,7 @@ function App() {
         <article className="form-surface">
           <header className="form-header">
             <div>
-              <p className="form-kicker">WellNActive</p>
+              <p className="form-kicker">WellNActiv</p>
               <h1>Branch Visit Stock Form</h1>
               <p>
                 Record branch visit data with per-SKU stock status and quantity, then attach visit

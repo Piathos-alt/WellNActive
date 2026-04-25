@@ -45,7 +45,7 @@ export default function Login({ onLogin }) {
   return (
     <div className="login-container">
       <div className="login-box">
-        <h1 className="login-title">WellNActive</h1>
+        <h1 className="login-title">WellNActiv</h1>
         <p className="login-subtitle">Store Tracker Login</p>
         
         <form className="login-form" onSubmit={handleSubmit}>
