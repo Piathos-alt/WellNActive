@@ -1,8 +1,8 @@
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Outfit:wght@500;600;700&display=swap");
 
 .form-page {
-  min-height: 100vh;
-  padding: 24px 16px 28px;
+  min-height: 100dvh;
+  padding: 20px 14px 24px;
   color: #e7eef8;
   font-family: "Manrope", "Segoe UI", sans-serif;
   background:
@@ -54,7 +54,7 @@
 .saved-forms-list {
   display: grid;
   gap: 10px;
-  max-height: calc(100vh - 170px);
+  max-height: calc(100dvh - 170px);
   overflow: auto;
   padding-right: 4px;
 }
@@ -396,8 +396,8 @@
 }
 
 .add-store-button {
-  width: 42px;
-  height: 42px;
+  width: 44px;
+  height: 44px;
   border-radius: 12px;
   border: 1px solid rgba(138, 212, 255, 0.55);
   background: rgba(64, 176, 255, 0.16);
@@ -543,6 +543,7 @@
   border: 0;
   border-radius: 999px;
   padding: 10px 16px;
+  min-height: 44px;
   font-weight: 700;
   cursor: pointer;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
@@ -737,6 +738,16 @@
   display: block;
 }
 
+@media (max-width: 1280px) {
+  .form-layout {
+    grid-template-columns: minmax(280px, 0.95fr) minmax(0, 1.35fr);
+  }
+
+  .summary-surface {
+    grid-column: 1 / -1;
+  }
+}
+
 @keyframes cardIn {
   from {
     transform: translateY(10px);
@@ -768,9 +779,61 @@
     grid-template-columns: 1fr;
   }
 
+  .form-page {
+    padding: 14px 10px 20px;
+  }
+
+  .form-surface,
+  .records-surface,
+  .summary-surface {
+    border-radius: 18px;
+    padding: 14px;
+  }
+
+  .form-surface {
+    order: 1;
+  }
+
+  .summary-surface {
+    order: 2;
+  }
+
+  .records-surface {
+    order: 3;
+  }
+
   .summary-surface,
   .records-surface {
     position: static;
+  }
+
+  .saved-forms-list {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .panel-heading,
+  .week-group-header,
+  .modal-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .panel-action,
+  .expand-week-button,
+  .delete-form-button,
+  .expand-form-button {
+    width: 100%;
+  }
+
+  .saved-form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .saved-form-actions {
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
   }
 
   .form-header {
@@ -783,5 +846,55 @@
 
   .action-button {
     width: 100%;
+  }
+
+  .modal-overlay {
+    padding: 10px;
+  }
+
+  .modal-card {
+    width: 100%;
+    max-height: calc(100dvh - 20px);
+    border-radius: 14px;
+    padding: 10px;
+  }
+
+  .modal-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .modal-actions .action-button {
+    width: 100%;
+  }
+
+  .expanded-table {
+    min-width: 760px;
+  }
+
+  .reference-image-thumbnail {
+    width: 76px;
+    height: 76px;
+  }
+}
+
+@media (max-width: 640px) {
+  .form-header h1 {
+    font-size: clamp(1.6rem, 8.5vw, 2rem);
+  }
+
+  .records-surface h2,
+  .summary-surface h2 {
+    font-size: clamp(1.2rem, 6.5vw, 1.6rem);
+  }
+
+  .form-field input,
+  .form-field select {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+
+  .photo-preview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

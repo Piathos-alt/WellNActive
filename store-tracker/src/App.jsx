@@ -482,6 +482,13 @@ function App() {
   }
 
   function handleVisitPhotoChange(event) {
+    // Revoke previously created preview URLs before replacing the file list.
+    visitPhotos.forEach((item) => {
+      if (item?.preview) {
+        URL.revokeObjectURL(item.preview)
+      }
+    })
+
     const selectedFiles = Array.from(event.target.files || [])
     const filesWithPreview = selectedFiles.map((file) => ({
       file,
@@ -493,15 +500,24 @@ function App() {
 
   function removeVisitPhoto(index) {
     setVisitPhotos((current) => {
-      const updated = current.filter((_, i) => i !== index)
-      updated.forEach((item, i) => {
-        if (i !== index && current[i]?.preview) {
-          // keep preview URLs for remaining items
-        }
-      })
-      return updated
+      const removedItem = current[index]
+      if (removedItem?.preview) {
+        URL.revokeObjectURL(removedItem.preview)
+      }
+
+      return current.filter((_, i) => i !== index)
     })
   }
+
+  useEffect(() => {
+    return () => {
+      visitPhotos.forEach((item) => {
+        if (item?.preview) {
+          URL.revokeObjectURL(item.preview)
+        }
+      })
+    }
+  }, [visitPhotos])
 
   function resetForm() {
     setWeekLabel("Week 1")
@@ -513,6 +529,11 @@ function App() {
     setBranchName("")
     setPogStatus("")
     setSkuStock(createInitialSkuState())
+    visitPhotos.forEach((item) => {
+      if (item?.preview) {
+        URL.revokeObjectURL(item.preview)
+      }
+    })
     setVisitPhotos([])
     setExistingVisitReferences([])
     setFormMessage("")
@@ -584,6 +605,11 @@ function App() {
     setBranchName(entry.branch_name || "")
     setPogStatus(entry.pog_status || "")
     setSkuStock(loadedSkuState)
+    visitPhotos.forEach((item) => {
+      if (item?.preview) {
+        URL.revokeObjectURL(item.preview)
+      }
+    })
     setVisitPhotos([])
     setExistingVisitReferences(Array.isArray(entry.visit_reference_urls) ? entry.visit_reference_urls : [])
     setFormMessage("Saved form loaded. You can edit values and submit again.")
