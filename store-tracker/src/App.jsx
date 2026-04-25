@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react"
 import { supabase } from "./supabaseClient"
 import { exportWeekToExcel } from "./excelExport"
+import Login from "./Login"
 import "./App.css"
 
 const SKU_ITEMS = ["Neck & Shoulder", "Menstrual", "Back", "Knee & Joint"]
@@ -53,6 +54,7 @@ function readWeekHistoryFromStorage() {
 }
 
 function App() {
+  const [currentUser, setCurrentUser] = useState(null)
   const [branches, setBranches] = useState([])
   const [savedForms, setSavedForms] = useState([])
   const [selectedSavedFormId, setSelectedSavedFormId] = useState("")
@@ -140,6 +142,15 @@ function App() {
   }
 
   useEffect(() => {
+    // Check for existing session on load
+    const storedUser = sessionStorage.getItem("wellnactive_user")
+    if (storedUser) {
+      try {
+        setCurrentUser(JSON.parse(storedUser))
+      } catch {
+        sessionStorage.removeItem("wellnactive_user")
+      }
+    }
     fetchBranches()
     fetchSavedForms()
   }, [])
@@ -898,6 +909,20 @@ function App() {
     return Math.ceil(entries.length / SAVED_FORMS_PER_PAGE)
   }
 
+  function handleLogin(user) {
+    setCurrentUser(user)
+  }
+
+  function handleLogout() {
+    sessionStorage.removeItem("wellnactive_user")
+    setCurrentUser(null)
+  }
+
+  // If not logged in, show login page
+  if (!currentUser) {
+    return <Login onLogin={handleLogin} />
+  }
+
   return (
     <main className="form-page">
       <section className="form-layout">
@@ -907,14 +932,19 @@ function App() {
               <p className="form-kicker">History</p>
               <h2>See all saved forms</h2>
             </div>
-            <button
-              type="button"
-              className="action-button secondary-action panel-action"
-              onClick={fetchSavedForms}
-              disabled={savedFormsLoading}
-            >
-              {savedFormsLoading ? "Refreshing..." : "Refresh"}
-            </button>
+            <div className="header-actions">
+              <button
+                type="button"
+                className="action-button secondary-action panel-action"
+                onClick={fetchSavedForms}
+                disabled={savedFormsLoading}
+              >
+                {savedFormsLoading ? "Refreshing..." : "Refresh"}
+              </button>
+              <button type="button" className="logout-button" onClick={handleLogout}>
+                Logout ({currentUser.username})
+              </button>
+            </div>
           </div>
 
           {savedFormsLoading ? (
