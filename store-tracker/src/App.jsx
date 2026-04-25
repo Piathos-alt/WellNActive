@@ -88,6 +88,9 @@ function App() {
   const [storeModalError, setStoreModalError] = useState("")
   const [isSavingStore, setIsSavingStore] = useState(false)
   const [storeCodeLookupStatus, setStoreCodeLookupStatus] = useState("idle")
+  const [savedFormsPage, setSavedFormsPage] = useState(1)
+  const [weekGroupPage, setWeekGroupPage] = useState({})
+  const SAVED_FORMS_PER_PAGE = 5
 
   function saveWeekOptions(nextOptions) {
     const normalized = normalizeWeekOptions(nextOptions)
@@ -874,6 +877,26 @@ function App() {
     return groups
   }, {})
   const groupedWeekEntries = Object.entries(groupedForms).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }))
+  const totalPages = Math.ceil(groupedWeekEntries.length / SAVED_FORMS_PER_PAGE)
+  const paginatedWeekEntries = groupedWeekEntries.slice((savedFormsPage - 1) * SAVED_FORMS_PER_PAGE, savedFormsPage * SAVED_FORMS_PER_PAGE)
+
+  function getWeekPage(week) {
+    return weekGroupPage[week] || 1
+  }
+
+  function setWeekPage(week, page) {
+    setWeekGroupPage((prev) => ({ ...prev, [week]: page }))
+  }
+
+  function getPaginatedEntries(entries, week) {
+    const page = getWeekPage(week)
+    const start = (page - 1) * SAVED_FORMS_PER_PAGE
+    return entries.slice(start, start + SAVED_FORMS_PER_PAGE)
+  }
+
+  function getTotalEntryPages(entries) {
+    return Math.ceil(entries.length / SAVED_FORMS_PER_PAGE)
+  }
 
   return (
     <main className="form-page">
@@ -903,7 +926,11 @@ function App() {
             </div>
           ) : savedForms.length ? (
             <div className="saved-forms-list">
-              {groupedWeekEntries.map(([week, entries]) => (
+              {paginatedWeekEntries.map(([week, entries]) => {
+                const paginated = getPaginatedEntries(entries, week)
+                const entryTotalPages = getTotalEntryPages(entries)
+                const currentPage = getWeekPage(week)
+                return (
                 <section key={week} className="week-group">
                   <div className="week-group-header">
                     <p className="week-group-title">{week}</p>
@@ -915,7 +942,7 @@ function App() {
                       Expand
                     </button>
                   </div>
-                  {entries.map((entry) => (
+                  {paginated.map((entry) => (
                     <article
                       key={entry.id}
                       className={`saved-form-row ${selectedSavedFormId === entry.id ? "active-saved-form" : ""}`}
@@ -941,8 +968,53 @@ function App() {
                       </div>
                     </article>
                   ))}
+                  {entries.length > SAVED_FORMS_PER_PAGE && (
+                    <div className="inner-pagination">
+                      <button
+                        type="button"
+                        className="inner-pagination-button"
+                        onClick={() => setWeekPage(week, currentPage - 1)}
+                        disabled={currentPage === 1}
+                      >
+                        ‹
+                      </button>
+                      <span>{currentPage}/{entryTotalPages}</span>
+                      <button
+                        type="button"
+                        className="inner-pagination-button"
+                        onClick={() => setWeekPage(week, currentPage + 1)}
+                        disabled={currentPage >= entryTotalPages}
+                      >
+                        ›
+                      </button>
+                    </div>
+                  )}
                 </section>
-              ))}
+              );
+              })}
+              {savedForms.length > SAVED_FORMS_PER_PAGE && (
+                <div className="pagination-controls">
+                  <button
+                    type="button"
+                    className="pagination-button"
+                    onClick={() => setSavedFormsPage((p) => Math.max(1, p - 1))}
+                    disabled={savedFormsPage === 1}
+                  >
+                    Previous
+                  </button>
+                  <span className="pagination-info">
+                    Page {savedFormsPage} of {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    className="pagination-button"
+                    onClick={() => setSavedFormsPage((p) => p + 1)}
+                    disabled={savedFormsPage >= totalPages}
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <p className="helper-text">No saved forms yet. Submit the form to create your first record.</p>
