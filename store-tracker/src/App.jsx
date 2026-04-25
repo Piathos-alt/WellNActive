@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 import { supabase } from "./supabaseClient"
+import { exportWeekToExcel } from "./excelExport"
 import "./App.css"
 
 const SKU_ITEMS = ["Neck & Shoulder", "Menstrual", "Back", "Knee & Joint"]
@@ -146,8 +147,24 @@ function App() {
 
   function handleVisitPhotoChange(event) {
     const selectedFiles = Array.from(event.target.files || [])
-    setVisitPhotos(selectedFiles)
+    const filesWithPreview = selectedFiles.map((file) => ({
+      file,
+      preview: URL.createObjectURL(file),
+    }))
+    setVisitPhotos(filesWithPreview)
     setFormMessage("")
+  }
+
+  function removeVisitPhoto(index) {
+    setVisitPhotos((current) => {
+      const updated = current.filter((_, i) => i !== index)
+      updated.forEach((item, i) => {
+        if (i !== index && current[i]?.preview) {
+          // keep preview URLs for remaining items
+        }
+      })
+      return updated
+    })
   }
 
   function resetForm() {
@@ -161,6 +178,40 @@ function App() {
     setVisitPhotos([])
     setExistingVisitReferences([])
     setFormMessage("")
+  }
+
+  async function uploadVisitPhotos(uploadedFiles) {
+    const uploadedUrls = []
+
+    for (const item of uploadedFiles) {
+      const file = item.file
+      const timestamp = Date.now()
+      const randomStr = Math.random().toString(36).substring(2, 8)
+      const storagePath = `visit-photos/${timestamp}-${randomStr}-${file.name}`
+
+      const { error: uploadError } = await supabase.storage
+          .from("visit-reference")
+        .upload(storagePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+        })
+
+      if (uploadError) {
+        throw new Error(`Failed to upload ${file.name}: ${uploadError.message}`)
+      }
+
+      const { data: urlData } = supabase.storage
+          .from("visit-reference")
+        .getPublicUrl(storagePath)
+
+      if (urlData?.publicUrl) {
+        uploadedUrls.push(urlData.publicUrl)
+      } else {
+        throw new Error(`Could not get URL for ${file.name}`)
+      }
+    }
+
+    return uploadedUrls
   }
 
   async function loadSavedForm(entry) {
@@ -228,9 +279,6 @@ function App() {
       return
     }
 
-    const uploadedReferences = visitPhotos.map((file) => file.name)
-    const visitReferenceUrls = [...existingVisitReferences, ...uploadedReferences]
-
     const skuRows = SKU_ITEMS.map((sku) => {
       const parsedQuantity = Number.parseInt(String(skuStock[sku].quantity || "0"), 10)
       return {
@@ -241,25 +289,50 @@ function App() {
     })
 
     setIsSubmitting(true)
-    setFormMessage("Saving entry to Supabase...")
 
-    let { data: visitEntry, error: visitError } = await supabase
-      .from("visit_entries")
-      .insert({
-        week_label: String(weekLabel).trim(),
-        visit_date: visitDate,
-        store_code: selectedStoreCode,
-        branch_name: branchName,
-        pog_status: pogStatus,
-        visit_reference_urls: visitReferenceUrls,
-      })
-      .select("id")
-      .single()
+    let uploadedUrls = []
+    if (visitPhotos.length > 0) {
+      try {
+        setFormMessage("Uploading photos...")
+        uploadedUrls = await uploadVisitPhotos(visitPhotos)
+      } catch (error) {
+        setIsSubmitting(false)
+        setFormMessage(`Photo upload failed: ${error.message}`)
+        return
+      }
+    }
 
-    if (visitError?.code === "42703") {
-      const fallbackInsert = await supabase
+    const visitReferenceUrls = [...existingVisitReferences, ...uploadedUrls]
+
+    let visitEntry
+    let visitError
+
+    if (selectedSavedFormId) {
+      // UPDATE existing form
+      setFormMessage("Updating entry in Supabase...")
+      const { data, error: updateError } = await supabase
+        .from("visit_entries")
+        .update({
+          week_label: String(weekLabel).trim(),
+          visit_date: visitDate,
+          store_code: selectedStoreCode,
+          branch_name: branchName,
+          pog_status: pogStatus,
+          visit_reference_urls: visitReferenceUrls,
+        })
+        .eq("id", selectedSavedFormId)
+        .select("id")
+        .single()
+
+      visitEntry = data
+      visitError = updateError
+    } else {
+      // INSERT new form
+      setFormMessage("Saving entry to Supabase...")
+      let { data: newEntry, error: insertError } = await supabase
         .from("visit_entries")
         .insert({
+          week_label: String(weekLabel).trim(),
           visit_date: visitDate,
           store_code: selectedStoreCode,
           branch_name: branchName,
@@ -269,8 +342,25 @@ function App() {
         .select("id")
         .single()
 
-      visitEntry = fallbackInsert.data
-      visitError = fallbackInsert.error
+      if (insertError?.code === "42703") {
+        const fallbackInsert = await supabase
+          .from("visit_entries")
+          .insert({
+            visit_date: visitDate,
+            store_code: selectedStoreCode,
+            branch_name: branchName,
+            pog_status: pogStatus,
+            visit_reference_urls: visitReferenceUrls,
+          })
+          .select("id")
+          .single()
+
+        newEntry = fallbackInsert.data
+        insertError = fallbackInsert.error
+      }
+
+      visitEntry = newEntry
+      visitError = insertError
     }
 
     if (visitError) {
@@ -284,7 +374,9 @@ function App() {
       ...row,
     }))
 
-    const { error: skuError } = await supabase.from("visit_entry_skus").insert(skuPayload)
+    const { error: skuError } = await supabase
+      .from("visit_entry_skus")
+      .upsert(skuPayload, { onConflict: "visit_entry_id,sku_name" })
 
     if (skuError) {
       setIsSubmitting(false)
@@ -376,151 +468,8 @@ function App() {
     setModalLoading(false)
   }
 
-  function sanitizeFileName(value) {
-    return String(value || "week-export")
-      .trim()
-      .replace(/[^a-z0-9-_]+/gi, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "")
-      .toLowerCase() || "week-export"
-  }
-
   async function handleImportWeekToExcel() {
-    if (!expandedWeekEntries.length) {
-      setModalError("There is no week data loaded to export.")
-      return
-    }
-
-    setIsExporting(true)
-
-    try {
-      const { default: ExcelJS } = await import("exceljs")
-      const workbook = new ExcelJS.Workbook()
-      workbook.creator = "WellNActive"
-      workbook.created = new Date()
-      workbook.modified = new Date()
-
-      const sheetName = sanitizeFileName(expandedWeekLabel || "Week Export").slice(0, 31) || "Week Export"
-      const worksheet = workbook.addWorksheet(sheetName, {
-        properties: { defaultRowHeight: 18 },
-        views: [{ state: "frozen", ySplit: 1 }],
-      })
-
-      worksheet.columns = [
-        { key: "date", width: 14 },
-        { key: "store_code", width: 14 },
-        { key: "branch_name", width: 24 },
-        { key: "sku", width: 22 },
-        { key: "stock_status", width: 18 },
-        { key: "stock_quantity", width: 18 },
-        { key: "pog_status", width: 14 },
-        { key: "visit_reference", width: 28 },
-      ]
-
-      const headerRow = worksheet.addRow([
-        "Date",
-        "Store Code",
-        "Branch Name",
-        "SKU",
-        "Stock Status",
-        "Stock Quantity",
-        "POG STATUS",
-        "Visit Reference",
-      ])
-      headerRow.height = 20
-      headerRow.font = { name: "Aptos", size: 10, bold: true, color: { argb: "F5F9FF" } }
-      headerRow.alignment = { vertical: "middle", horizontal: "center", wrapText: true }
-      headerRow.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "0B2642" },
-      }
-      headerRow.eachCell((cell) => {
-        cell.border = {
-          top: { style: "thin", color: { argb: "90ADC8" } },
-          left: { style: "thin", color: { argb: "90ADC8" } },
-          bottom: { style: "thin", color: { argb: "90ADC8" } },
-          right: { style: "thin", color: { argb: "90ADC8" } },
-        }
-      })
-
-      for (const { entry, rows } of expandedWeekEntries) {
-        const rowsToExport = Array.isArray(rows) ? rows : []
-        const mergeHeight = rowsToExport.length
-
-        for (let index = 0; index < rowsToExport.length; index += 1) {
-          const skuRow = rowsToExport[index]
-          const excelRow = worksheet.addRow([
-            index === 0 ? entry.visit_date || "-" : "",
-            index === 0 ? entry.store_code || "-" : "",
-            index === 0 ? entry.branch_name || "-" : "",
-            skuRow.sku_name || "-",
-            skuRow.stock_status || "-",
-            skuRow.stock_quantity ?? "-",
-            index === 0 ? entry.pog_status || "-" : "",
-            index === 0
-              ? Array.isArray(entry.visit_reference_urls) && entry.visit_reference_urls.length
-                ? entry.visit_reference_urls.join(", ")
-                : "No reference"
-              : "",
-          ])
-
-          excelRow.height = 18
-          excelRow.font = { name: "Aptos", size: 10, color: { argb: "EAF3FC" } }
-          excelRow.alignment = { vertical: "middle", horizontal: "left", wrapText: true }
-
-          if (index === 0 && mergeHeight > 1) {
-            const startRow = excelRow.number
-            const endRow = excelRow.number + mergeHeight - 1
-
-            worksheet.mergeCells(startRow, 1, endRow, 1)
-            worksheet.mergeCells(startRow, 2, endRow, 2)
-            worksheet.mergeCells(startRow, 3, endRow, 3)
-            worksheet.mergeCells(startRow, 7, endRow, 7)
-            worksheet.mergeCells(startRow, 8, endRow, 8)
-
-            const mergedCells = [1, 2, 3, 7, 8]
-            mergedCells.forEach((columnIndex) => {
-              const cell = excelRow.getCell(columnIndex)
-              cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true }
-              cell.font = { name: "Aptos", size: 10, color: { argb: "EAF3FC" } }
-            })
-          }
-
-          const fillColor = index % 2 === 0 ? "10223A" : "13263D"
-          excelRow.eachCell((cell) => {
-            cell.border = {
-              top: { style: "thin", color: { argb: "90ADC8" } },
-              left: { style: "thin", color: { argb: "90ADC8" } },
-              bottom: { style: "thin", color: { argb: "90ADC8" } },
-              right: { style: "thin", color: { argb: "90ADC8" } },
-            }
-            cell.fill = {
-              type: "pattern",
-              pattern: "solid",
-              fgColor: { argb: fillColor },
-            }
-          })
-        }
-      }
-
-      const buffer = await workbook.xlsx.writeBuffer()
-      const blob = new Blob([buffer], {
-        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.download = `${sanitizeFileName(expandedWeekLabel || "week-export")}.xlsx`
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      setModalError(error?.message || "Could not export Excel file.")
-    } finally {
-      setIsExporting(false)
-    }
+    await exportWeekToExcel(expandedWeekLabel, expandedWeekEntries, setModalError, setIsExporting)
   }
 
   const isBranchSynced = !branchLoading && !branchError
@@ -773,11 +722,25 @@ function App() {
               </label>
 
               {visitPhotos.length ? (
-                <ul className="file-list">
-                  {visitPhotos.map((file) => (
-                    <li key={file.name}>{file.name}</li>
-                  ))}
-                </ul>
+                <div>
+                  <p className="helper-text">Newly added photos:</p>
+                  <div className="photo-preview-grid">
+                    {visitPhotos.map((item, index) => (
+                      <div key={index} className="photo-preview-item">
+                        <img src={item.preview} alt={`Preview ${index + 1}`} className="photo-preview-img" />
+                        <p className="photo-filename">{item.file.name}</p>
+                        <button
+                          type="button"
+                          className="remove-photo-btn"
+                          onClick={() => removeVisitPhoto(index)}
+                          title="Remove this photo"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               ) : (
                 <p className="helper-text">Upload one or more branch visit photos.</p>
               )}
@@ -879,7 +842,7 @@ function App() {
                   onClick={handleImportWeekToExcel}
                   disabled={modalLoading || isExporting || !expandedWeekEntries.length}
                 >
-                  {isExporting ? "Exporting..." : "Import to excel"}
+                  {isExporting ? "Exporting..." : "Export to Excel"}
                 </button>
                 <button type="button" className="action-button secondary-action modal-close" onClick={closeExpandedModal}>
                   Close
@@ -938,9 +901,29 @@ function App() {
                                 <>
                                   <td rowSpan={rows.length}>{entry.pog_status || "-"}</td>
                                   <td rowSpan={rows.length}>
-                                    {Array.isArray(entry.visit_reference_urls) && entry.visit_reference_urls.length
-                                      ? entry.visit_reference_urls.join(", ")
-                                      : "No reference"}
+                                    {Array.isArray(entry.visit_reference_urls) && entry.visit_reference_urls.length ? (
+                                      <div className="visit-reference-cell">
+                                        <div className="reference-images">
+                                          {entry.visit_reference_urls.map((url) => (
+                                            <a
+                                              key={url}
+                                              href={url}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="reference-image-link"
+                                            >
+                                              <img
+                                                src={url}
+                                                alt="Visit reference"
+                                                className="reference-image-thumbnail"
+                                              />
+                                            </a>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    ) : (
+                                      "No reference"
+                                    )}
                                   </td>
                                 </>
                               ) : null}
