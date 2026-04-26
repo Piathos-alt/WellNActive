@@ -206,9 +206,6 @@ export default function AnalyticsChat() {
             <div className="min-w-0">
               <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200/80">Operations Analytics</p>
               <h3 className="mt-1 text-lg font-semibold text-white">Chat with your data</h3>
-              <p className="mt-1 text-sm leading-6 text-slate-300">
-                Ask deterministic questions about visits, stock status, and compliance.
-              </p>
             </div>
 
             <div className="flex shrink-0 items-center gap-2">
@@ -220,11 +217,14 @@ export default function AnalyticsChat() {
               <button
                 type="button"
                 onClick={() => setIsCollapsed(true)}
-                className="rounded-full border border-slate-200/10 bg-white/5 px-3 py-2 text-xs font-semibold text-slate-100 transition hover:border-cyan-300/40 hover:bg-cyan-300/10"
+                className="analytics-chat-collapse-button"
                 aria-expanded={true}
                 aria-label="Collapse analytics chatbot"
+                title="Collapse analytics chatbot"
               >
-                Collapse
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M5 11h14v2H5z" fill="currentColor" />
+                </svg>
               </button>
             </div>
           </div>
@@ -243,7 +243,7 @@ export default function AnalyticsChat() {
             ))}
           </div>
 
-          <div className="mt-4 max-h-[52dvh] overflow-y-auto pr-1">
+          <div className="analytics-chat-messages mt-4">
             <div className="space-y-3.5">
               {messages.map((message) => (
                 <ChatBubble key={message.id} message={message} />
@@ -259,7 +259,7 @@ export default function AnalyticsChat() {
             </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="mt-4 flex gap-2">
+          <form onSubmit={handleSubmit} className="analytics-chat-input-row mt-4 flex gap-2">
             <label className="sr-only" htmlFor="analyticsQuestion">
               Ask an analytics question
             </label>

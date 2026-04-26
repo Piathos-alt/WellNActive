@@ -71,7 +71,7 @@
 
 .analytics-chat-panel {
   width: min(420px, calc(100vw - 16px));
-  max-height: min(80dvh, 760px);
+  height: min(80dvh, 760px);
   border: 1px solid rgba(148, 197, 253, 0.18);
   border-radius: 24px;
   padding: 16px;
@@ -80,6 +80,8 @@
     radial-gradient(circle at 100% 0%, rgba(90, 214, 255, 0.12), transparent 38%);
   backdrop-filter: blur(16px);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   animation: cardIn 0.45s ease both;
 }
 
@@ -92,6 +94,58 @@
 
 .analytics-chat-panel .rounded-2xl {
   word-break: break-word;
+}
+
+.analytics-chat-collapse-button {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 197, 253, 0.16);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e7eef8;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+}
+
+.analytics-chat-collapse-button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(90, 214, 255, 0.45);
+  background: rgba(90, 214, 255, 0.1);
+}
+
+.analytics-chat-collapse-button svg {
+  width: 16px;
+  height: 16px;
+}
+
+.analytics-chat-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(90, 214, 255, 0.55) rgba(255, 255, 255, 0.08);
+}
+
+.analytics-chat-messages::-webkit-scrollbar {
+  width: 8px;
+}
+
+.analytics-chat-messages::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+}
+
+.analytics-chat-messages::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(90, 214, 255, 0.72), rgba(89, 213, 179, 0.72));
+  border-radius: 999px;
+  border: 2px solid rgba(6, 15, 29, 0.96);
+}
+
+.analytics-chat-input-row {
+  flex: 0 0 auto;
 }
 
 .week-group-header-main {
