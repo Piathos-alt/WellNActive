@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { supabase } from "./supabaseClient"
 import { exportWeekToExcel } from "./excelExport"
 import Login from "./Login"
+import AnalyticsChat from "./components/chat/AnalyticsChat"
 import "./App.css"
 
 const SKU_ITEMS = ["Neck & Shoulder", "Menstrual", "Back", "Knee & Joint"]
@@ -1718,6 +1719,7 @@ function App() {
           </div>
         </div>
       ) : null}
+      <AnalyticsChat />
     </main>
   )
 }
