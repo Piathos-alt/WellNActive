@@ -78,6 +78,7 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [expandedWeekLabel, setExpandedWeekLabel] = useState("")
   const [expandedWeekEntries, setExpandedWeekEntries] = useState([])
+  const [expandedWeekTotalForms, setExpandedWeekTotalForms] = useState(0)
   const [modalLoading, setModalLoading] = useState(false)
   const [modalError, setModalError] = useState("")
   const [isExporting, setIsExporting] = useState(false)
@@ -92,7 +93,15 @@ function App() {
   const [storeCodeLookupStatus, setStoreCodeLookupStatus] = useState("idle")
   const [savedFormsPage, setSavedFormsPage] = useState(1)
   const [weekGroupPage, setWeekGroupPage] = useState({})
+  const [weekSearchInput, setWeekSearchInput] = useState({})
+  const [weekSearchApplied, setWeekSearchApplied] = useState({})
+  const [isSavedFormsCollapsed, setIsSavedFormsCollapsed] = useState(false)
+  const [autoRefreshSeconds, setAutoRefreshSeconds] = useState(0)
   const SAVED_FORMS_PER_PAGE = 5
+
+  function isOutOfStockStatus(value) {
+    return String(value || "").trim().toLowerCase() === "out of stock"
+  }
 
   function saveWeekOptions(nextOptions) {
     const normalized = normalizeWeekOptions(nextOptions)
@@ -220,6 +229,19 @@ function App() {
       window.clearTimeout(timeoutId)
     }
   }, [isStoreModalOpen, newStoreCode])
+
+  useEffect(() => {
+    if (!autoRefreshSeconds || autoRefreshSeconds <= 0) {
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      fetchBranches()
+      fetchSavedForms()
+    }, autoRefreshSeconds * 1000)
+
+    return () => window.clearInterval(intervalId)
+  }, [autoRefreshSeconds])
 
   async function fetchBranches() {
     setBranchLoading(true)
@@ -825,6 +847,7 @@ function App() {
   async function handleExpandWeekGroup(week, entries) {
     setIsModalOpen(true)
     setExpandedWeekLabel(week)
+    setExpandedWeekTotalForms(Array.isArray(entries) ? entries.length : 0)
     setExpandedWeekEntries([])
     setModalError("")
     setModalLoading(true)
@@ -867,6 +890,7 @@ function App() {
   function closeExpandedModal() {
     setIsModalOpen(false)
     setExpandedWeekLabel("")
+    setExpandedWeekTotalForms(0)
     setExpandedWeekEntries([])
     setModalError("")
     setModalLoading(false)
@@ -897,6 +921,34 @@ function App() {
 
   function setWeekPage(week, page) {
     setWeekGroupPage((prev) => ({ ...prev, [week]: page }))
+  }
+
+  function handleWeekSearchInputChange(week, value) {
+    setWeekSearchInput((prev) => ({
+      ...prev,
+      [week]: value,
+    }))
+  }
+
+  function applyWeekSearch(week) {
+    const nextValue = String(weekSearchInput[week] || "").trim()
+    setWeekSearchApplied((prev) => ({
+      ...prev,
+      [week]: nextValue,
+    }))
+    setWeekPage(week, 1)
+  }
+
+  function clearWeekSearch(week) {
+    setWeekSearchInput((prev) => ({
+      ...prev,
+      [week]: "",
+    }))
+    setWeekSearchApplied((prev) => ({
+      ...prev,
+      [week]: "",
+    }))
+    setWeekPage(week, 1)
   }
 
   function getPaginatedEntries(entries, week) {
@@ -935,11 +987,18 @@ function App() {
             <div className="header-actions">
               <button
                 type="button"
-                className="action-button secondary-action panel-action"
-                onClick={fetchSavedForms}
-                disabled={savedFormsLoading}
+                className="icon-action-button collapse-panel-button"
+                onClick={() => setIsSavedFormsCollapsed((prev) => !prev)}
+                aria-label={isSavedFormsCollapsed ? "Expand saved forms panel" : "Collapse saved forms panel"}
+                title={isSavedFormsCollapsed ? "Expand saved forms panel" : "Collapse saved forms panel"}
               >
-                {savedFormsLoading ? "Refreshing..." : "Refresh"}
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  {isSavedFormsCollapsed ? (
+                    <path d="M8.6 10.6L12 14l3.4-3.4 1.4 1.4L12 16.8 7.2 12z" fill="currentColor" />
+                  ) : (
+                    <path d="M8.6 13.4L12 10l3.4 3.4 1.4-1.4L12 7.2 7.2 12z" fill="currentColor" />
+                  )}
+                </svg>
               </button>
               <button type="button" className="logout-button" onClick={handleLogout}>
                 Logout ({currentUser.username})
@@ -947,7 +1006,9 @@ function App() {
             </div>
           </div>
 
-          {savedFormsLoading ? (
+          {isSavedFormsCollapsed ? (
+            <p className="helper-text">Saved forms panel is collapsed.</p>
+          ) : savedFormsLoading ? (
             <p className="helper-text">Loading saved forms...</p>
           ) : savedFormsError ? (
             <div className="feedback-box error-feedback compact-feedback">
@@ -957,21 +1018,84 @@ function App() {
           ) : savedForms.length ? (
             <div className="saved-forms-list">
               {paginatedWeekEntries.map(([week, entries]) => {
-                const paginated = getPaginatedEntries(entries, week)
-                const entryTotalPages = getTotalEntryPages(entries)
+                const searchInputValue = String(weekSearchInput[week] || "")
+                const appliedSearchValue = String(weekSearchApplied[week] || "").trim().toLowerCase()
+                const filteredEntries = appliedSearchValue
+                  ? entries.filter((entry) => {
+                    const code = String(entry.store_code || "").toLowerCase()
+                    const branch = String(entry.branch_name || "").toLowerCase()
+                    return code.includes(appliedSearchValue) || branch.includes(appliedSearchValue)
+                  })
+                  : entries
+                const paginated = getPaginatedEntries(filteredEntries, week)
+                const entryTotalPages = getTotalEntryPages(filteredEntries)
                 const currentPage = getWeekPage(week)
                 return (
                 <section key={week} className="week-group">
                   <div className="week-group-header">
-                    <p className="week-group-title">{week}</p>
+                    <p className="week-group-title">
+                      {week}
+                      <span className="week-group-count">{entries.length} saved</span>
+                    </p>
                     <button
                       type="button"
-                      className="expand-week-button"
+                      className="icon-action-button expand-week-button"
                       onClick={() => handleExpandWeekGroup(week, entries)}
+                      aria-label={`Expand ${week}`}
+                      title={`Expand ${week}`}
                     >
-                      Expand
+                      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path d="M4 12h7V5h2v7h7v2h-7v7h-2v-7H4z" fill="currentColor" />
+                      </svg>
                     </button>
                   </div>
+                  <div className="week-group-search">
+                    <label htmlFor={`week-search-${week}`} className="visually-hidden">
+                      Search store code or branch name in {week}
+                    </label>
+                    <input
+                      id={`week-search-${week}`}
+                      type="text"
+                      value={searchInputValue}
+                      placeholder="Search code or branch name"
+                      onChange={(event) => handleWeekSearchInputChange(week, event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault()
+                          applyWeekSearch(week)
+                        }
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="icon-action-button week-search-button"
+                      onClick={() => applyWeekSearch(week)}
+                      aria-label={`Search ${week}`}
+                      title={`Search ${week}`}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path d="M10 4a6 6 0 104.47 10L19 18.53 20.53 17l-4.53-4.53A6 6 0 0010 4m0 2a4 4 0 110 8 4 4 0 010-8" fill="currentColor" />
+                      </svg>
+                    </button>
+                    {appliedSearchValue ? (
+                      <button
+                        type="button"
+                        className="icon-action-button week-search-clear"
+                        onClick={() => clearWeekSearch(week)}
+                        aria-label={`Clear search for ${week}`}
+                        title={`Clear search for ${week}`}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                          <path d="M7.4 6l4.6 4.6L16.6 6 18 7.4 13.4 12l4.6 4.6-1.4 1.4-4.6-4.6-4.6 4.6L6 16.6 10.6 12 6 7.4 7.4 6z" fill="currentColor" />
+                        </svg>
+                      </button>
+                    ) : null}
+                  </div>
+                  {appliedSearchValue ? (
+                    <p className="week-search-meta">
+                      Showing {filteredEntries.length} result{filteredEntries.length === 1 ? "" : "s"} for "{weekSearchApplied[week]}"
+                    </p>
+                  ) : null}
                   {paginated.map((entry) => (
                     <article
                       key={entry.id}
@@ -989,16 +1113,29 @@ function App() {
                       <div className="saved-form-actions">
                         <button
                           type="button"
-                          className="delete-form-button"
+                          className="icon-action-button delete-form-button"
                           onClick={() => handleDeleteSavedForm(entry)}
                           disabled={deletingFormId === entry.id}
+                          aria-label={deletingFormId === entry.id ? "Deleting form" : "Delete form"}
+                          title={deletingFormId === entry.id ? "Deleting form" : "Delete form"}
                         >
-                          {deletingFormId === entry.id ? "Deleting..." : "Delete"}
+                          {deletingFormId === entry.id ? (
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                              <path d="M12 5a7 7 0 107 7h-2a5 5 0 11-5-5z" fill="currentColor" />
+                            </svg>
+                          ) : (
+                            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                              <path d="M9 3h6l1 2h4v2H4V5h4l1-2zm1 6h2v9h-2V9zm4 0h2v9h-2V9zM6 9h2v9H6V9z" fill="currentColor" />
+                            </svg>
+                          )}
                         </button>
                       </div>
                     </article>
                   ))}
-                  {entries.length > SAVED_FORMS_PER_PAGE && (
+                  {!paginated.length ? (
+                    <p className="helper-text">No saved forms match this search.</p>
+                  ) : null}
+                  {filteredEntries.length > SAVED_FORMS_PER_PAGE && (
                     <div className="inner-pagination">
                       <button
                         type="button"
@@ -1318,6 +1455,33 @@ function App() {
           <p className="form-kicker">Live Summary</p>
           <h2>Database Sync Status</h2>
 
+          <div className="auto-refresh-controls">
+            <label className="auto-refresh-label" htmlFor="autoRefreshSeconds">Auto refresh</label>
+            <div className="auto-refresh-row">
+              <select
+                id="autoRefreshSeconds"
+                value={autoRefreshSeconds}
+                onChange={(event) => setAutoRefreshSeconds(Number(event.target.value))}
+              >
+                <option value={0}>Off</option>
+                <option value={5}>Every 5 seconds</option>
+                <option value={10}>Every 10 seconds</option>
+                <option value={15}>Every 15 seconds</option>
+                <option value={30}>Every 30 seconds</option>
+              </select>
+              <button
+                type="button"
+                className="action-button secondary-action refresh-now-button"
+                onClick={() => {
+                  fetchBranches()
+                  fetchSavedForms()
+                }}
+              >
+                Refresh Now
+              </button>
+            </div>
+          </div>
+
           <div className="summary-list">
             <div>
               <span>Overall Sync</span>
@@ -1366,6 +1530,7 @@ function App() {
               <div>
                 <p className="form-kicker">Saved Form Details</p>
                 <h3>{expandedWeekLabel || "Unassigned"}</h3>
+                <p className="expanded-week-count">Total saved forms: {expandedWeekTotalForms}</p>
               </div>
               <div className="modal-actions">
                 <button
@@ -1416,7 +1581,10 @@ function App() {
                           </tr>
                         </thead>
                         <tbody>
-                          {rows.map((row, index) => (
+                          {rows.map((row, index) => {
+                            const isOutOfStock = isOutOfStockStatus(row.stock_status)
+
+                            return (
                             <tr key={`${entry.id}-${row.sku_name}`}>
                               {index === 0 ? (
                                 <>
@@ -1426,10 +1594,10 @@ function App() {
                                 </>
                               ) : null}
 
-                              <td>{row.sku_name}</td>
-                              <td>{row.stock_status}</td>
-                              <td>{row.stock_quantity}</td>
-                              <td>{row.sku_pog_status}</td>
+                              <td className={isOutOfStock ? "expanded-oos-cell" : ""}>{row.sku_name}</td>
+                              <td className={isOutOfStock ? "expanded-oos-cell" : ""}>{row.stock_status}</td>
+                              <td className={isOutOfStock ? "expanded-oos-cell" : ""}>{row.stock_quantity}</td>
+                              <td className={isOutOfStock ? "expanded-oos-cell" : ""}>{row.sku_pog_status}</td>
 
                               {index === 0 ? (
                                 <>
@@ -1462,7 +1630,7 @@ function App() {
                                 </>
                               ) : null}
                             </tr>
-                          ))}
+                          )})}
                         </tbody>
                       </table>
                     </div>

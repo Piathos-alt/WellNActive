@@ -198,6 +198,7 @@ export async function exportWeekToExcel(expandedWeekLabel, expandedWeekEntries, 
     })
 
     const mergedGroups = []
+    const outOfStockRowIndexes = []
 
     for (const { entry, rows } of expandedWeekEntries) {
       const skuRows = Array.isArray(rows) && rows.length
@@ -208,7 +209,7 @@ export async function exportWeekToExcel(expandedWeekLabel, expandedWeekEntries, 
       const visitReferenceUrls = getReferenceUrls(entry?.visit_reference_urls)
 
       for (const skuRow of skuRows) {
-        worksheet.addRow({
+        const addedRow = worksheet.addRow({
           visit_date: normalizeText(entry?.visit_date),
           store_code: normalizeText(entry?.store_code),
           branch_name: normalizeText(entry?.branch_name),
@@ -219,6 +220,10 @@ export async function exportWeekToExcel(expandedWeekLabel, expandedWeekEntries, 
           pog_status: normalizeText(entry?.pog_status),
           visit_reference_urls: "",
         })
+
+        if (String(skuRow?.stock_status || "").trim().toLowerCase() === "out of stock") {
+          outOfStockRowIndexes.push(addedRow.number)
+        }
       }
 
       mergedGroups.push({
@@ -321,6 +326,23 @@ export async function exportWeekToExcel(expandedWeekLabel, expandedWeekEntries, 
         })
       } catch {
         referenceCell.value = "Image unavailable"
+      }
+    }
+
+    for (const rowIndex of outOfStockRowIndexes) {
+      for (const columnIndex of [4, 5, 6, 7]) {
+        const cell = worksheet.getCell(rowIndex, columnIndex)
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFD32F2F" },
+        }
+        cell.font = {
+          name: "Calibri",
+          size: 10,
+          bold: true,
+          color: { argb: "FFFFFFFF" },
+        }
       }
     }
 
