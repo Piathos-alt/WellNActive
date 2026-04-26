@@ -96,6 +96,7 @@ function App() {
   const [weekGroupPage, setWeekGroupPage] = useState({})
   const [weekSearchInput, setWeekSearchInput] = useState({})
   const [weekSearchApplied, setWeekSearchApplied] = useState({})
+  const [collapsedWeekGroups, setCollapsedWeekGroups] = useState({})
   const [isSavedFormsCollapsed, setIsSavedFormsCollapsed] = useState(false)
   const [autoRefreshSeconds, setAutoRefreshSeconds] = useState(0)
   const SAVED_FORMS_PER_PAGE = 5
@@ -952,6 +953,99 @@ function App() {
     setWeekPage(week, 1)
   }
 
+  function isWeekGroupCollapsed(week) {
+    return Boolean(collapsedWeekGroups[week])
+  }
+
+  function toggleWeekGroupCollapsed(week) {
+    setCollapsedWeekGroups((prev) => ({
+      ...prev,
+      [week]: !Boolean(prev[week]),
+    }))
+  }
+
+  async function handleRenameWeekGroup(week) {
+    const currentWeek = String(week || "").trim()
+    if (!currentWeek) {
+      return
+    }
+
+    const proposedName = window.prompt("Enter a new name for this week group:", currentWeek)
+    if (proposedName === null) {
+      return
+    }
+
+    const trimmedNewWeek = String(proposedName || "").trim()
+    if (!trimmedNewWeek) {
+      setFormMessage("Week name cannot be empty.")
+      return
+    }
+
+    if (trimmedNewWeek.toLowerCase() === currentWeek.toLowerCase()) {
+      return
+    }
+
+    setFormMessage(`Renaming ${currentWeek} to ${trimmedNewWeek}...`)
+
+    const { error } = await supabase
+      .from("visit_entries")
+      .update({ week_label: trimmedNewWeek })
+      .eq("week_label", currentWeek)
+
+    if (error) {
+      setFormMessage(`Could not rename week group: ${error.message}`)
+      return
+    }
+
+    registerWeekLabel(trimmedNewWeek)
+    setWeekGroupPage((prev) => {
+      const next = { ...prev }
+      const existingPage = next[currentWeek]
+      delete next[currentWeek]
+      if (existingPage) {
+        next[trimmedNewWeek] = existingPage
+      }
+      return next
+    })
+    setWeekSearchInput((prev) => {
+      const next = { ...prev }
+      const existingValue = String(next[currentWeek] || "")
+      delete next[currentWeek]
+      if (existingValue) {
+        next[trimmedNewWeek] = existingValue
+      }
+      return next
+    })
+    setWeekSearchApplied((prev) => {
+      const next = { ...prev }
+      const existingValue = String(next[currentWeek] || "")
+      delete next[currentWeek]
+      if (existingValue) {
+        next[trimmedNewWeek] = existingValue
+      }
+      return next
+    })
+    setCollapsedWeekGroups((prev) => {
+      const next = { ...prev }
+      const wasCollapsed = Boolean(next[currentWeek])
+      delete next[currentWeek]
+      if (wasCollapsed) {
+        next[trimmedNewWeek] = true
+      }
+      return next
+    })
+
+    if (selectedSavedFormId) {
+      const selectedEntry = savedForms.find((entry) => entry.id === selectedSavedFormId)
+      if (selectedEntry && String(selectedEntry.week_label || "").trim() === currentWeek) {
+        setWeekLabel(trimmedNewWeek)
+      }
+    }
+
+    await fetchSavedForms()
+    setFormMessage(`Renamed week group to ${trimmedNewWeek}.`)
+  }
+
   function getPaginatedEntries(entries, week) {
     const page = getWeekPage(week)
     const start = (page - 1) * SAVED_FORMS_PER_PAGE
@@ -1019,6 +1113,7 @@ function App() {
           ) : savedForms.length ? (
             <div className="saved-forms-list">
               {paginatedWeekEntries.map(([week, entries]) => {
+                const isCollapsed = isWeekGroupCollapsed(week)
                 const searchInputValue = String(weekSearchInput[week] || "")
                 const appliedSearchValue = String(weekSearchApplied[week] || "").trim().toLowerCase()
                 const filteredEntries = appliedSearchValue
@@ -1036,20 +1131,52 @@ function App() {
                   <div className="week-group-header">
                     <p className="week-group-title">
                       {week}
+                      <button
+                        type="button"
+                        className="icon-action-button week-edit-button"
+                        onClick={() => handleRenameWeekGroup(week)}
+                        aria-label={`Edit ${week} week group name`}
+                        title={`Edit ${week} week group name`}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                          <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.04a1 1 0 000-1.41L18.2 3.29a1 1 0 00-1.41 0l-1.83 1.83 3.75 3.75 2-1.62z" fill="currentColor" />
+                        </svg>
+                      </button>
                       <span className="week-group-count">{entries.length} saved</span>
                     </p>
-                    <button
-                      type="button"
-                      className="icon-action-button expand-week-button"
-                      onClick={() => handleExpandWeekGroup(week, entries)}
-                      aria-label={`Expand ${week}`}
-                      title={`Expand ${week}`}
-                    >
-                      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                        <path d="M4 12h7V5h2v7h7v2h-7v7h-2v-7H4z" fill="currentColor" />
-                      </svg>
-                    </button>
+                    <div className="week-group-controls">
+                      <button
+                        type="button"
+                        className="icon-action-button week-collapse-button"
+                        onClick={() => toggleWeekGroupCollapsed(week)}
+                        aria-label={isCollapsed ? `Expand ${week} list` : `Minimize ${week} list`}
+                        title={isCollapsed ? `Expand ${week} list` : `Minimize ${week} list`}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                          {isCollapsed ? (
+                            <path d="M12 7l5 5h-3v5h-4v-5H7l5-5z" fill="currentColor" />
+                          ) : (
+                            <path d="M12 17l-5-5h3V7h4v5h3l-5 5z" fill="currentColor" />
+                          )}
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-action-button expand-week-button"
+                        onClick={() => handleExpandWeekGroup(week, entries)}
+                        aria-label={`Expand ${week}`}
+                        title={`Expand ${week}`}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                          <path d="M9 3H3v6h2V6.41l3.29 3.3 1.42-1.42L6.41 5H9V3zm6 0v2h2.59l-3.3 3.29 1.42 1.42 3.3-3.29V9H21V3h-6zm0 18h6v-6h-2v2.59l-3.29-3.3-1.42 1.42 3.29 3.3H15v2zM3 15v6h6v-2H6.41l3.3-3.29-1.42-1.42-3.3 3.29V15H3z" fill="currentColor" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
+                  {isCollapsed ? (
+                    <p className="helper-text">This week group is minimized.</p>
+                  ) : (
+                    <>
                   <div className="week-group-search">
                     <label htmlFor={`week-search-${week}`} className="visually-hidden">
                       Search store code or branch name in {week}
@@ -1156,6 +1283,8 @@ function App() {
                         ›
                       </button>
                     </div>
+                  )}
+                    </>
                   )}
                 </section>
               );
